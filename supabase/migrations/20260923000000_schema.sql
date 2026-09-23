@@ -1,4 +1,3 @@
--- u1kis8LeLvsBXSlp supabase password
 -- Phase 1 schema on Supabase (see SPEC.md "Data model").
 -- Users live in Supabase Auth (auth.users); app-specific fields go in profiles.
 
