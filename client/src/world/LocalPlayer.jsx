@@ -62,6 +62,11 @@ function useKeys(handlers) {
         if (reaction >= 0) on.current.onReact?.(reaction);
         if (e.code === 'KeyV') on.current.onToggleMic?.();
         if (e.code === 'KeyT') on.current.onPushToTalk?.(true);
+        if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+          e.preventDefault(); // don't type the Enter into the chat box it opens
+          on.current.onOpenChat?.();
+          return;
+        }
       }
       keys.current.add(e.code);
     };
@@ -98,6 +103,7 @@ function useKeys(handlers) {
 //   and mouse look pause while it's on.
 // - onReact(index): keys 1-5 send an emoji reaction (see REACTIONS).
 // - onToggleMic() on V; onPushToTalk(true/false) while T is held.
+// - onOpenChat() on Enter (typing in the chat box doesn't move the player).
 export default function LocalPlayer({
   id,
   name,
@@ -118,10 +124,11 @@ export default function LocalPlayer({
   onReact,
   onToggleMic,
   onPushToTalk,
+  onOpenChat,
 }) {
   const { camera, gl, size } = useThree();
   const avatar = useRef();
-  const keys = useKeys({ onInteract, onToggleCinema, onReact, onToggleMic, onPushToTalk, cinema });
+  const keys = useKeys({ onInteract, onToggleCinema, onReact, onToggleMic, onPushToTalk, onOpenChat, cinema });
   const cinemaBlend = useRef(0);
   const cinemaPose = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion(), look: new THREE.Vector3() });
   const playerPose = useRef({ pos: new THREE.Vector3(), quat: new THREE.Quaternion() });

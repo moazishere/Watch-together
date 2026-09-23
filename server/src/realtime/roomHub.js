@@ -3,7 +3,11 @@
 // Positions and share events never touch the database: Supabase is only read
 // when a socket connects (auth + room access) and when a room ends.
 import {
+  CHAT_HISTORY,
+  CHAT_MAX_LENGTH,
+  CHAT_WINDOW_MS,
   EVENTS,
+  MAX_CHAT_PER_WINDOW,
   MAX_MOVE_EVENTS_PER_SEC,
   MAX_REACTIONS_PER_WINDOW,
   MAX_STEP_DISTANCE,
@@ -39,6 +43,8 @@ function getOrCreateState(nsp, room, env) {
       screen: env.screenPosition,
       seats: new Map(seatLayout(env.screenPosition, env.assetConfig?.seats).seats.map((seat) => [seat.id, seat])),
       seatedBy: new Map(),
+      chat: [], // last CHAT_HISTORY messages, memory only
+      chatSeq: 0,
       players: new Map(),
       hostGraceTimer: null,
     };
@@ -62,6 +68,17 @@ const publicPlayer = (p) => ({
 
 function isFiniteNumber(n) {
   return typeof n === 'number' && Number.isFinite(n);
+}
+
+// Chat text: a string, control characters removed, whitespace collapsed,
+// trimmed and cut to CHAT_MAX_LENGTH. Returns '' when nothing is left.
+function cleanChatText(text) {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, CHAT_MAX_LENGTH);
 }
 
 // Initial facing: towards the screen. Three.js objects look down -Z at rotationY = 0.
@@ -119,6 +136,7 @@ function onConnection(socket) {
     // step-capped from the spawn point we picked.
     synced: false,
     reactionTimes: [],
+    chatTimes: [],
     moveWindowStart: 0,
     moveCount: 0,
   };
@@ -128,6 +146,7 @@ function onConnection(socket) {
     selfId: user.id,
     players: [...state.players.values()].map(publicPlayer),
     room: { id: roomId, status: state.status, hostId: state.hostId, sharing: state.sharing },
+    chat: state.chat,
   });
   socket.broadcast.emit(EVENTS.PLAYER_JOIN, publicPlayer(player));
 
@@ -223,6 +242,25 @@ function onConnection(socket) {
     if (player.reactionTimes.length >= MAX_REACTIONS_PER_WINDOW) return;
     player.reactionTimes.push(now);
     socket.broadcast.emit(EVENTS.PLAYER_REACT, { id: user.id, reaction });
+  });
+
+  // Text chat: cleaned up, rate limited, sent to everyone (sender included, so
+  // every screen shows the same order) and kept only in memory.
+  socket.on(EVENTS.CHAT_SEND, (msg, ack) => {
+    const reply = typeof ack === 'function' ? ack : () => {};
+    if (state.players.get(user.id) !== player) return reply({ ok: false, error: 'Not in the room' });
+    const text = cleanChatText(msg?.text);
+    if (!text) return reply({ ok: false, error: 'Empty message' });
+    const now = Date.now();
+    player.chatTimes = player.chatTimes.filter((t) => now - t < CHAT_WINDOW_MS);
+    if (player.chatTimes.length >= MAX_CHAT_PER_WINDOW) return reply({ ok: false, error: 'Slow down a little' });
+    player.chatTimes.push(now);
+
+    const message = { id: `${roomId}:${++state.chatSeq}`, userId: user.id, name: user.name, text, at: now };
+    state.chat.push(message);
+    if (state.chat.length > CHAT_HISTORY) state.chat.shift();
+    state.nsp.emit(EVENTS.CHAT_MESSAGE, message);
+    reply({ ok: true });
   });
 
   socket.on(EVENTS.HOST_STARTED_SHARE, () => {

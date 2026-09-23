@@ -91,6 +91,10 @@ up close and quieter across the clearing. A 🎙️ shows over whoever is talkin
 dips a little while friends talk. Voice works as soon as you enter a room, before the movie starts.
 Use headphones so the movie doesn't echo into your mic.
 
+**Text chat:** press **Enter** to type, **Enter** again to send, and **Esc** to cancel. Messages show in
+the panel at the bottom left and as a speech bubble over the sender for a few seconds. In cinema mode,
+new messages appear briefly over the picture. People who join later see the last 50 messages.
+
 `/preview` shows an environment with no networking: fly-around camera, single-player walk mode,
 walkable-bounds outline, and a test pattern that checks the screen's video texture without LiveKit.
 
@@ -156,6 +160,10 @@ No Supabase project is needed:
 - **Reactions** travel as `player:react` with just an index into `REACTIONS` (`shared/src/events.js`).
   The server relays them to everyone else, at most 6 per player every 3 s, and never stores them. The
   sender shows its own reaction immediately without waiting for the server.
+- **Chat** goes over Socket.io (`chat:send` → `chat:message`) and is never written to the database. The
+  server keeps the last 50 messages per room in memory for late joiners (they're gone when the room
+  ends or the server restarts). Messages are cleaned (control characters removed, 300 characters max),
+  rate-limited to 5 per 5 s, and rendered as plain text, so HTML in a message is shown, not run.
 - **Rigged character instead of the spec's primitive avatar.** `client/public/models/Soldier.glb` comes
   from the three.js examples (a Mixamo character with Idle / Walk / Run clips). Everyone uses the same
   model and is told apart by a colored ring and name tag. The animation follows how fast each avatar

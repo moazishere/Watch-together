@@ -14,6 +14,8 @@ const initialState = {
   players: {}, // remote players: id -> { id, name, isHost, seatId }
   selfSeatId: null, // the seat you're sitting on, if any
   speaking: {}, // identity (user id) -> true while their voice is active, you included
+  chat: [], // recent messages: { id, userId, name, text, at }
+  bubbles: {}, // user id -> { id, text, shownAt } for the speech bubble over their head
   status: 'waiting', // watch_rooms.status
   sharing: false, // host is currently screen sharing
 };

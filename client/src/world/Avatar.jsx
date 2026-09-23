@@ -6,6 +6,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { colorForId } from '../lib/random.js';
 import { nameTagTexture } from '../lib/textures.js';
 import FloatingReactions from './FloatingReactions.jsx';
+import ChatBubble from './ChatBubble.jsx';
 import { emojiTexture } from './reactions.js';
 import { useRoom } from '../state/room.js';
 
@@ -175,6 +176,7 @@ export default function Avatar({ id, name, isHost = false, isSelf = false, seate
         )}
         {!isSelf && <NameTag name={name} isHost={isHost} />}
         <TalkingIndicator id={id} />
+        <ChatBubble id={id} />
         <FloatingReactions playerId={id} />
       </group>
     </group>

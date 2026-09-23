@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { Server } from 'socket.io';
 import { io as connect } from 'socket.io-client';
-import { EVENTS, MAX_REACTIONS_PER_WINDOW, roomNamespace, seatLayout } from '@watch-together/shared';
+import { CHAT_MAX_LENGTH, EVENTS, MAX_CHAT_PER_WINDOW, MAX_REACTIONS_PER_WINDOW, roomNamespace, seatLayout } from '@watch-together/shared';
 
 process.env.SUPABASE_URL ??= 'http://supabase.invalid';
 process.env.SUPABASE_SECRET_KEY ??= 'test';
@@ -367,6 +367,50 @@ test('reactions: relayed to others with the sender id, invalid ones dropped, spa
   assert.equal(received.length, MAX_REACTIONS_PER_WINDOW, 'valid reactions beyond the window limit are dropped');
   assert.ok(received.every((r) => r.id === alice.id && [1, 4].includes(r.reaction)));
   assert.equal(echoedToSender, false, 'the sender shows its own reaction locally');
+  a.socket.disconnect();
+  b.socket.disconnect();
+});
+
+test('chat: delivered to everyone in order, cleaned, limited, history for late joiners', async () => {
+  const roomId = store.addRoom(alice.id);
+  store.invite(roomId, bob.id);
+  const send = (socket, text) => new Promise((resolve) => socket.emit(EVENTS.CHAT_SEND, { text }, resolve));
+
+  const a = joinRoom(roomId, alice.token);
+  const aliceState = await a.state;
+  assert.deepEqual(aliceState.chat, []);
+
+  const aliceGot = [];
+  a.socket.on(EVENTS.CHAT_MESSAGE, (m) => aliceGot.push(m));
+
+  assert.deepEqual(await send(a.socket, '   '), { ok: false, error: 'Empty message' });
+  assert.deepEqual(await send(a.socket, 42), { ok: false, error: 'Empty message' });
+  assert.equal((await send(a.socket, '  hello\n\tthere  ')).ok, true);
+  assert.equal((await send(a.socket, 'x'.repeat(CHAT_MAX_LENGTH + 50))).ok, true);
+  await new Promise((r) => setTimeout(r, 100));
+
+  assert.equal(aliceGot[0].text, 'hello there', 'whitespace/control characters collapsed');
+  assert.equal(aliceGot[0].name, 'Alice');
+  assert.equal(aliceGot[0].userId, alice.id);
+  assert.equal(aliceGot[1].text.length, CHAT_MAX_LENGTH, 'long messages are cut');
+
+  // A late joiner receives the recent history.
+  const b = joinRoom(roomId, bob.token);
+  const bobState = await b.state;
+  assert.deepEqual(bobState.chat.map((m) => m.text), aliceGot.map((m) => m.text));
+
+  // Bob's message reaches Alice (and Bob).
+  const bobGotOwn = nextEvent(b.socket, EVENTS.CHAT_MESSAGE);
+  const aliceGetsBob = nextEvent(a.socket, EVENTS.CHAT_MESSAGE);
+  await send(b.socket, '<b>hi</b> 😂');
+  assert.equal((await aliceGetsBob).text, '<b>hi</b> 😂', 'text is relayed as-is; the client renders it as plain text');
+  assert.equal((await bobGotOwn).name, 'Bob');
+
+  // Spam limit.
+  const results = [];
+  for (let i = 0; i < MAX_CHAT_PER_WINDOW + 2; i++) results.push(await send(b.socket, `spam ${i}`));
+  assert.equal(results.filter((r) => r.ok).length, MAX_CHAT_PER_WINDOW - 1, 'counts the earlier message too');
+  assert.equal(results.at(-1).error, 'Slow down a little');
   a.socket.disconnect();
   b.socket.disconnect();
 });

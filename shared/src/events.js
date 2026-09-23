@@ -10,6 +10,10 @@ export const EVENTS = Object.freeze({
   PLAYER_STAND: 'player:stand',
   // client -> server { reaction: index into REACTIONS }; server -> others { id, reaction }
   PLAYER_REACT: 'player:react',
+  // client -> server { text } with an ack { ok, error? };
+  // server -> everyone { id, userId, name, text, at }
+  CHAT_SEND: 'chat:send',
+  CHAT_MESSAGE: 'chat:message',
   HOST_STARTED_SHARE: 'room:host_started_share',
   HOST_STOPPED_SHARE: 'room:host_stopped_share',
   // waiting -> live transition (host pressed "Start session")
@@ -31,3 +35,9 @@ export const REACTIONS = Object.freeze(['😂', '❤️', '😮', '👏', '🔥'
 // Server-side spam limit: at most this many reactions per player per window.
 export const MAX_REACTIONS_PER_WINDOW = 6;
 export const REACTION_WINDOW_MS = 3000;
+
+// Text chat: kept in server memory only (never the database).
+export const CHAT_MAX_LENGTH = 300;
+export const CHAT_HISTORY = 50; // recent messages a late joiner receives
+export const MAX_CHAT_PER_WINDOW = 5;
+export const CHAT_WINDOW_MS = 5000;

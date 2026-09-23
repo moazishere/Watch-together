@@ -95,3 +95,83 @@ export function nameTagTexture(name, { host = false } = {}) {
   texture.anisotropy = 4;
   return { texture, aspect: w / h };
 }
+
+// Word-wraps text to at most maxLines lines of maxWidth pixels, adding an
+// ellipsis when it doesn't fit. Long words are broken mid-word.
+function wrapText(ctx, text, maxWidth, maxLines) {
+  const lines = [];
+  let line = '';
+  const push = () => {
+    lines.push(line);
+    line = '';
+  };
+  for (const word of text.split(' ')) {
+    let rest = word;
+    while (rest) {
+      const candidate = line ? `${line} ${rest}` : rest;
+      if (ctx.measureText(candidate).width <= maxWidth) {
+        line = candidate;
+        rest = '';
+      } else if (line) {
+        push();
+      } else {
+        // A single word wider than the bubble: split it.
+        let cut = rest.length;
+        while (cut > 1 && ctx.measureText(rest.slice(0, cut)).width > maxWidth) cut--;
+        line = rest.slice(0, cut);
+        rest = rest.slice(cut);
+        if (rest) push();
+      }
+    }
+  }
+  if (line) push();
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    let last = lines[maxLines - 1];
+    while (last && ctx.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
+    lines[maxLines - 1] = `${last}…`;
+  }
+  return lines;
+}
+
+// Speech bubble for chat messages above an avatar: rounded box with a small
+// tail at the bottom. Returns the texture and its aspect ratio.
+export function chatBubbleTexture(text) {
+  const scale = 2;
+  const font = `500 ${26 * scale}px system-ui, "Segoe UI Emoji", sans-serif`;
+  const maxTextWidth = 420 * scale;
+  const padX = 20 * scale;
+  const padY = 14 * scale;
+  const lineHeight = 34 * scale;
+  const tail = 14 * scale;
+
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = font;
+  const lines = wrapText(measure, text, maxTextWidth, 3);
+  const textWidth = Math.max(...lines.map((l) => measure.measureText(l).width));
+  const w = Math.ceil(textWidth + padX * 2);
+  const boxH = Math.ceil(lines.length * lineHeight + padY * 2);
+  const h = boxH + tail;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(245, 247, 255, 0.95)';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, w, boxH, 18 * scale);
+  ctx.moveTo(w / 2 - tail, boxH - 1);
+  ctx.lineTo(w / 2, h);
+  ctx.lineTo(w / 2 + tail, boxH - 1);
+  ctx.fill();
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#141a33';
+  lines.forEach((l, i) => ctx.fillText(l, w / 2, padY + lineHeight * (i + 0.5)));
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return { texture, aspect: w / h, heightPx: h };
+}

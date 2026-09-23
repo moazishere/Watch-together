@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { getRoom, recordJoin } from '../lib/data.js';
@@ -19,6 +19,7 @@ import SpatialVoice from '../world/SpatialVoice.jsx';
 import { useCinemaMode } from '../world/useCinemaMode.js';
 import InvitePanel from './InvitePanel.jsx';
 import ReactionBar from './ReactionBar.jsx';
+import ChatPanel from './ChatPanel.jsx';
 import ReactionStream from '../world/ReactionStream.jsx';
 
 export default function RoomPage() {
@@ -84,7 +85,10 @@ function Room({ details }) {
   const navigate = useNavigate();
   const user = useAuth((s) => s.user);
   const { connection, error, endedReason, selfId, spawn, players, status, sharing, selfSeatId } = useRoom();
-  const { sendMove, announceShare, sit, stand, react } = useRoomSocket(room.id);
+  const { sendMove, announceShare, sit, stand, react, sendChat } = useRoomSocket(room.id);
+  const chat = useRoom((s) => s.chat);
+  const chatPanel = useRef(null);
+  const openChat = useCallback(() => chatPanel.current?.open(), []);
   // One LiveKit call for voice (from the moment you're in) and screen share.
   const call = useLiveKitRoom({
     roomId: room.id,
@@ -186,6 +190,7 @@ function Room({ details }) {
             onReact={react}
             onToggleMic={voice.toggleMic}
             onPushToTalk={voice.pushToTalk}
+            onOpenChat={openChat}
           />
         )}
       </WorldCanvas>
@@ -197,11 +202,12 @@ function Room({ details }) {
           <kbd>S</kbd>
           <kbd>D</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>E</kbd> sit on a bench · <kbd>C</kbd>
           cinema mode · <kbd>1</kbd>–<kbd>5</kbd> react · <kbd>V</kbd>
-          mic · hold <kbd>T</kbd> to talk · scroll to zoom · <kbd>Esc</kbd> for the menu
+          mic · hold <kbd>T</kbd> to talk · <kbd>Enter</kbd> chat · scroll to zoom · <kbd>Esc</kbd> for the menu
         </div>
       )}
       {locked && <div className="crosshair" />}
       {cinema && <ReactionStream names={names} />}
+      <ChatPanel ref={chatPanel} messages={chat} selfId={user.id} onSend={sendChat} compact={cinema} />
       {showCinemaHint && (
         <div className="cinema-hint card small">
           Cinema mode · <kbd>C</kbd> to exit

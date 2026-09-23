@@ -7,6 +7,7 @@ import { reactionBus } from './reactions.js';
 
 const SEND_INTERVAL_MS = 1000 / MOVE_SEND_HZ;
 const REACTION_COOLDOWN_MS = 200; // matches the server's spam limit closely enough
+const CHAT_KEEP = 100; // messages kept in the panel
 
 const transformOf = (p) => ({ x: p.x, y: p.y, z: p.z, rotationY: p.rotationY });
 
@@ -30,7 +31,7 @@ export function useRoomSocket(roomId) {
     });
     socketRef.current = socket;
 
-    socket.on(EVENTS.ROOM_STATE, ({ selfId, players, room }) => {
+    socket.on(EVENTS.ROOM_STATE, ({ selfId, players, room, chat = [] }) => {
       // (Re)connected: the server placed us at a fresh spawn, so send our real
       // position on the next frame even if we're standing still.
       lastSent.current = { at: 0, x: NaN, y: NaN, z: NaN, rotationY: NaN };
@@ -56,6 +57,15 @@ export function useRoomSocket(roomId) {
         players: others,
         status: room.status,
         sharing: room.sharing,
+        // Recent history from the server (no bubbles for old messages).
+        chat,
+      }));
+    });
+
+    socket.on(EVENTS.CHAT_MESSAGE, (message) => {
+      set((s) => ({
+        chat: [...s.chat.slice(-(CHAT_KEEP - 1)), message],
+        bubbles: { ...s.bubbles, [message.userId]: { id: message.id, text: message.text, shownAt: performance.now() } },
       }));
     });
 
@@ -172,5 +182,19 @@ export function useRoomSocket(roomId) {
     socketRef.current?.emit(EVENTS.PLAYER_REACT, { reaction });
   }, []);
 
-  return { sendMove, announceShare, sit, stand, react };
+  // Send a chat message; resolves { ok, error? }. The message itself comes back
+  // through CHAT_MESSAGE like everyone else's, so all screens show one order.
+  const sendChat = useCallback(
+    (text) =>
+      new Promise((resolve) => {
+        const socket = socketRef.current;
+        if (!socket?.connected) return resolve({ ok: false, error: 'Not connected' });
+        socket.timeout(4000).emit(EVENTS.CHAT_SEND, { text }, (err, res) =>
+          resolve(err ? { ok: false, error: 'The server did not answer, try again' } : res),
+        );
+      }),
+    [],
+  );
+
+  return { sendMove, announceShare, sit, stand, react, sendChat };
 }
