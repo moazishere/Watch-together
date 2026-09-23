@@ -20,7 +20,10 @@ export function useVoiceChat({ call }) {
   const [micOn, setMicOn] = useState(false);
   const [micError, setMicError] = useState(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [volume, setVolume] = useState(1);
   const pushing = useRef(false); // mic is on only because T is held
+
+  useEffect(() => voiceAudio.setVolume(volume), [volume]);
 
   // Remote microphones -> spatial audio; active speakers -> store.
   useEffect(() => {
@@ -110,5 +113,5 @@ export function useVoiceChat({ call }) {
     [room, setMic],
   );
 
-  return { available: Boolean(room), micOn, toggleMic, pushToTalk, micError, audioBlocked };
+  return { available: Boolean(room), micOn, toggleMic, pushToTalk, micError, audioBlocked, volume, setVolume };
 }

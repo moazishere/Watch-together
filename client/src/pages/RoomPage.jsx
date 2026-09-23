@@ -280,9 +280,9 @@ function Room({ details }) {
             Stop sharing
           </button>
         )}
-        {!isHost && share.audioTrack && (
-          <label className="volume">
-            🔊
+        {share.audioTrack && (
+          <label className="volume" title="Movie volume">
+            🎬
             <input
               type="range"
               min="0"
@@ -290,9 +290,28 @@ function Room({ details }) {
               step="0.05"
               value={share.volume}
               onChange={(e) => share.setVolume(Number(e.target.value))}
-              aria-label="Volume"
+              aria-label="Movie volume"
             />
           </label>
+        )}
+        {voice.available && (
+          <label className="volume" title="Friends' voices volume">
+            🗣️
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              value={voice.volume}
+              onChange={(e) => voice.setVolume(Number(e.target.value))}
+              aria-label="Voices volume"
+            />
+          </label>
+        )}
+        {voice.micOn && share.audioTrack && (
+          <span className="muted small" title="With speakers, the movie leaks into your mic and the browser turns your voice down to cancel it">
+            🎧 Headphones keep your voice clear
+          </span>
         )}
         {(share.audioBlocked || voice.audioBlocked) && (
           <button className="btn primary" onClick={share.resumeAudio}>

@@ -2,17 +2,21 @@ import * as THREE from 'three';
 
 // Spatial voice: every remote microphone plays through its own Web Audio
 // PannerNode placed at that player's head, and the listener follows the
-// camera, so voices come from where people stand: louder nearby, quieter
-// across the clearing, panned left/right.
+// camera, so voices come from where people stand: panned left/right, a bit
+// quieter across the clearing, but never drowned out by the movie.
 
-// Distance model: full volume within REF_DISTANCE, then falls off
-// (inverse model: gain = ref / (ref + rolloff * (d - ref))).
-const REF_DISTANCE = 2;
-const ROLLOFF = 1.3;
-const MAX_DISTANCE = 45;
+// Distance model (linear): full volume within REF_DISTANCE, easing down to
+// (1 - ROLLOFF) = 35% at MAX_DISTANCE and staying there beyond it.
+const REF_DISTANCE = 3;
+const ROLLOFF = 0.65;
+const MAX_DISTANCE = 30;
+// Voices are naturally much quieter than movie audio: boost them, with a
+// compressor after the boost so loud talkers don't clip.
+const VOICE_BOOST = 1.8;
 
 let ctx = null;
 let master = null;
+let volume = 1; // user's voice volume slider, 0..2
 const forward = new THREE.Vector3();
 const voices = new Map(); // identity -> { element, source, panner }
 
@@ -20,7 +24,9 @@ function context() {
   if (!ctx) {
     ctx = new AudioContext();
     master = ctx.createGain();
-    master.connect(ctx.destination);
+    master.gain.value = volume * VOICE_BOOST;
+    const limiter = new DynamicsCompressorNode(ctx, { threshold: -18, knee: 12, ratio: 4, attack: 0.003, release: 0.25 });
+    master.connect(limiter).connect(ctx.destination);
   }
   return ctx;
 }
@@ -44,7 +50,7 @@ export const voiceAudio = {
     const source = c.createMediaStreamSource(stream);
     const panner = new PannerNode(c, {
       panningModel: 'HRTF',
-      distanceModel: 'inverse',
+      distanceModel: 'linear',
       refDistance: REF_DISTANCE,
       rolloffFactor: ROLLOFF,
       maxDistance: MAX_DISTANCE,
@@ -76,8 +82,10 @@ export const voiceAudio = {
     return Boolean(ctx && ctx.state !== 'running' && voices.size > 0);
   },
 
-  setVolume(volume) {
-    if (master) master.gain.value = volume;
+  // 0 = silent, 1 = normal, 2 = twice as loud.
+  setVolume(value) {
+    volume = value;
+    if (master) master.gain.value = volume * VOICE_BOOST;
   },
 
   // Called every frame: listener = camera, each voice = that player's head.

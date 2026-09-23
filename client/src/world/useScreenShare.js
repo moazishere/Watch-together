@@ -16,12 +16,27 @@ const TRACK_EVENTS = [
 // 1080p at 30 fps: motion matters more than text sharpness for movies.
 const SHARE_PRESET = ScreenSharePresets.h1080fps30;
 // Movie volume while friends are talking, and how fast it dips / recovers.
-const DUCKED = 0.45;
-const DUCK_RATE = 6;
+const DUCKED = 0.25;
+const DUCK_RATE = 8;
 
 function describeError(err) {
   if (err?.name === 'NotAllowedError') return null; // the host closed the screen picker
   return err?.message || String(err ?? 'Screen share error');
+}
+
+// The host's own screen audio, but only when the browser stopped the shared
+// tab from playing it locally (tab capture): then we play it ourselves so
+// the host gets the volume slider and the dip under voices too. With
+// whole-screen/system audio the system keeps playing it, so we don't.
+function localScreenAudio(room) {
+  const audio = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)?.track?.mediaStreamTrack;
+  if (!audio) return null;
+  if (audio.getSettings?.().suppressLocalAudioPlayback === true) return audio;
+  // Some browsers apply the constraint without reporting it back.
+  const video = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack;
+  const isTab = video?.getSettings?.().displaySurface === 'browser';
+  const supported = navigator.mediaDevices?.getSupportedConstraints?.().suppressLocalAudioPlayback === true;
+  return isTab && supported ? audio : null;
 }
 
 // The subscribed MediaStreamTrack for a source, from any remote participant.
@@ -35,7 +50,8 @@ function remoteTrack(room, source) {
 
 // The host's screen on the shared LiveKit call: video for the in-world
 // screen, audio through a hidden <audio> element that dips while someone
-// talks (`duck`). The host starts and stops sharing here.
+// talks (`duck`), for viewers and (tab capture) the host alike. The host
+// starts and stops sharing here.
 export function useScreenShare({ call, onLocalShareChange, duck = false }) {
   const { room } = call;
   const [tracks, setTracks] = useState(NO_TRACKS);
@@ -56,8 +72,7 @@ export function useScreenShare({ call, onLocalShareChange, duck = false }) {
       // The host's own share is local; viewers receive it as a remote track.
       const localVideo = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track?.mediaStreamTrack;
       const videoTrack = localVideo ?? remoteTrack(room, Track.Source.ScreenShare);
-      // Never play the host's own screen audio back to them (echo).
-      const audioTrack = remoteTrack(room, Track.Source.ScreenShareAudio);
+      const audioTrack = localScreenAudio(room) ?? remoteTrack(room, Track.Source.ScreenShareAudio);
       const localSharing = Boolean(localVideo);
       setTracks((s) =>
         s.videoTrack === videoTrack && s.audioTrack === audioTrack && s.localSharing === localSharing
@@ -81,7 +96,7 @@ export function useScreenShare({ call, onLocalShareChange, duck = false }) {
     };
   }, [room]);
 
-  // Screen audio for viewers.
+  // Screen audio: viewers, and the host when sharing a tab (see localScreenAudio).
   useEffect(() => {
     if (!tracks.audioTrack) return undefined;
     const audio = new Audio();
@@ -129,8 +144,15 @@ export function useScreenShare({ call, onLocalShareChange, duck = false }) {
       await room.localParticipant.setScreenShareEnabled(
         true,
         {
-          // Ask for tab/system audio too: a movie without sound isn't much of a movie.
-          audio: true,
+          // Ask for tab/system audio too: a movie without sound isn't much of a
+          // movie. Keep it clean (no voice processing), and stop a shared tab
+          // from also playing locally so the host hears it through the app.
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            suppressLocalAudioPlayback: true,
+          },
           systemAudio: 'include',
           selfBrowserSurface: 'exclude',
           contentHint: 'motion',
