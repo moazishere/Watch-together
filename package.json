@@ -9,10 +9,14 @@
   "scripts": {
     "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w client",
+    "start": "npm start -w server",
     "test": "npm test -w shared && npm test -w server",
     "db:push": "npx supabase db push"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }
